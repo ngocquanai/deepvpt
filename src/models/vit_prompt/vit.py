@@ -106,6 +106,7 @@ class PromptedTransformer(Transformer):
         B = embedding_output.shape[0]
         num_layers = self.vit_config.transformer["num_layers"]
 
+        hidden_cls = []
         for i in range(num_layers):
             if i == 0:
                 hidden_states, weights = self.encoder.layer[i](embedding_output)
@@ -126,20 +127,25 @@ class PromptedTransformer(Transformer):
             if self.encoder.vis:
                 attn_weights.append(weights)
 
+
+            if i in [6,8,10] :
+                hidden_cls.append(hidden_states[:, :1, :])
+
+
         encoded = self.encoder.encoder_norm(hidden_states)
-        return encoded, attn_weights
+        return encoded, attn_weights, hidden_cls
 
     def forward(self, x):
         # this is the default version:
         embedding_output = self.incorporate_prompt(x)
 
         if self.prompt_config.DEEP:
-            encoded, attn_weights = self.forward_deep_prompt(
+            encoded, attn_weights, hidden_cls = self.forward_deep_prompt(
                 embedding_output)
         else:
             encoded, attn_weights = self.encoder(embedding_output)
 
-        return encoded, attn_weights
+        return encoded, attn_weights, hidden_cls
 
 
 class PromptedVisionTransformer(VisionTransformer):
@@ -158,12 +164,12 @@ class PromptedVisionTransformer(VisionTransformer):
             prompt_cfg, vit_cfg, img_size, vis)
 
     def forward(self, x, vis=False):
-        x, attn_weights = self.transformer(x)
+        x, attn_weights, hidden_cls = self.transformer(x)
 
         x = x[:, 0]
 
         logits = self.head(x)
 
         if not vis:
-            return logits
-        return logits, attn_weights
+            return logits, hidden_cls
+        return logits, attn_weights, hidden_cls

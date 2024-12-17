@@ -85,6 +85,7 @@ _C.MODEL.ADAPTER.STYLE = "Pfeiffer"
 # ----------------------------------------------------------------------
 _C.SOLVER = CfgNode()
 _C.SOLVER.LOSS = "softmax"
+_C.SOLVER.LOSS_WEIGHT = [0.25, 0.25, 0.25, 0.25]
 _C.SOLVER.LOSS_ALPHA = 0.01
 
 _C.SOLVER.OPTIMIZER = "sgd"  # or "adamw"

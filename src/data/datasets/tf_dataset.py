@@ -2,37 +2,41 @@
 
 """a dataset that handles output of tf.data: support datasets from VTAB"""
 import functools
-import tensorflow.compat.v1 as tf
+# import tensorflow.compat.v1 as tf
 import torch
 import torch.utils.data
 import numpy as np
 
 from collections import Counter
 from torch import Tensor
+from torchvision import transforms
+from PIL import Image
+import os
 
-from ..vtab_datasets import base
-# pylint: disable=unused-import
-from ..vtab_datasets import caltech
-from ..vtab_datasets import cifar
-from ..vtab_datasets import clevr
-from ..vtab_datasets import diabetic_retinopathy
-from ..vtab_datasets import dmlab
-from ..vtab_datasets import dsprites
-from ..vtab_datasets import dtd
-from ..vtab_datasets import eurosat
-from ..vtab_datasets import kitti
-from ..vtab_datasets import oxford_flowers102
-from ..vtab_datasets import oxford_iiit_pet
-from ..vtab_datasets import patch_camelyon
-from ..vtab_datasets import resisc45
-from ..vtab_datasets import smallnorb
-from ..vtab_datasets import sun397
-from ..vtab_datasets import svhn
-from ..vtab_datasets.registry import Registry
+
+# from ..vtab_datasets import base
+# # pylint: disable=unused-import
+# from ..vtab_datasets import caltech
+# from ..vtab_datasets import cifar
+# from ..vtab_datasets import clevr
+# from ..vtab_datasets import diabetic_retinopathy
+# from ..vtab_datasets import dmlab
+# from ..vtab_datasets import dsprites
+# from ..vtab_datasets import dtd
+# from ..vtab_datasets import eurosat
+# from ..vtab_datasets import kitti
+# from ..vtab_datasets import oxford_flowers102
+# from ..vtab_datasets import oxford_iiit_pet
+# from ..vtab_datasets import patch_camelyon
+# from ..vtab_datasets import resisc45
+# from ..vtab_datasets import smallnorb
+# from ..vtab_datasets import sun397
+# from ..vtab_datasets import svhn
+# from ..vtab_datasets.registry import Registry
 
 from ...utils import logging
 logger = logging.get_logger("visual_prompt")
-tf.config.experimental.set_visible_devices([], 'GPU')  # set tensorflow to not use gpu  # noqa
+# tf.config.experimental.set_visible_devices([], 'GPU')  # set tensorflow to not use gpu  # noqa
 DATASETS = [
     'caltech101',
     'cifar(num_classes=100)',
@@ -54,6 +58,20 @@ DATASETS = [
     'clevr(task="count_all")',
     'diabetic_retinopathy(config="btgraham-300")'
 ]
+def default_loader(path):
+    return Image.open(path).convert('RGB')
+
+def default_flist_reader(flist):
+    """
+    flist format: impath label\nimpath label\n ...(same to caffe's filelist)
+    """
+    imlist = []
+    with open(flist, 'r') as rf:
+        for line in rf.readlines():
+            impath, imlabel = line.strip().split()
+            imlist.append((impath, int(imlabel)))
+
+    return imlist
 
 
 class TFDataset(torch.utils.data.Dataset):
@@ -145,15 +163,89 @@ class TFDataset(torch.utils.data.Dataset):
         return len(self._targets)
 
 
-def preprocess_fn(data, size=224, input_range=(0.0, 1.0)):
-    image = data["image"]
-    image = tf.image.resize(image, [size, size])
 
-    image = tf.cast(image, tf.float32) / 255.0
-    image = image * (input_range[1] - input_range[0]) + input_range[0]
+class NQDataset(torch.utils.data.Dataset):
+    def __init__(self, cfg, split, root= "../../vtab-1k"):
+        assert split in {
+            "train",
+            "val",
+            "test",
+            "trainval"
+        }, "Split '{}' not supported for {} dataset".format(
+            split, cfg.DATA.NAME)
+        logger.info("Constructing {} dataset {}...".format(
+            cfg.DATA.NAME, split))
 
-    data["image"] = image
-    return data
+        # split_dict = {"trainval": "train800val200.txt", "train": "train800val200.txt", "test": "val200.txt", "val": "small_test.txt"}
+        split_dict = {"trainval": "train800.txt", "train": "train800.txt", "test": "val200.txt", "val": "val200.txt"}
+
+
+        self.cfg = cfg
+        self._split = split
+        self.name = cfg.DATA.NAME
+        self.dataset_name = self.name.split("-")[-1]
+
+        self.img_mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        self.img_std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+
+
+        self.root = os.path.join(root, self.dataset_name)
+        self.flist = os.path.join(self.root, split_dict[split])
+        self.imlist = default_flist_reader(self.flist)
+        self.transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+
+    def get_info(self):
+        num_imgs = len(self.imlist)
+        return num_imgs, self.get_class_num()
+
+    def get_class_num(self):
+        return self.cfg.DATA.NUMBER_CLASSES
+
+    def get_class_weights(self, weight_type):
+        """get a list of class weight, return a list float"""
+        if "train" not in self._split:
+            raise ValueError(
+                "only getting training class distribution, " + \
+                "got split {} instead".format(self._split)
+            )
+
+        cls_num = self.get_class_num()
+
+        return [1.0] * cls_num
+
+
+    def __getitem__(self, index):
+        # Load the image
+        impath, label = self.imlist[index]
+        img = default_loader(os.path.join(self.root, impath))
+        img = self.transform(img)
+
+        sample = {
+            "image": img,
+            "label": label,
+            # "id": index
+        }
+        return sample
+
+    def __len__(self):
+        return len(self.imlist)
+
+
+
+
+# def preprocess_fn(data, size=224, input_range=(0.0, 1.0)):
+#     image = data["image"]
+#     image = tf.image.resize(image, [size, size])
+
+#     image = tf.cast(image, tf.float32) / 255.0
+#     image = image * (input_range[1] - input_range[0]) + input_range[0]
+
+#     data["image"] = image
+#     return data
 
 
 def build_tf_dataset(cfg, mode):

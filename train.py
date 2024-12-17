@@ -55,9 +55,9 @@ def setup(args):
             break
         else:
             count += 1
-    if count > cfg.RUN_N_TIMES:
-        raise ValueError(
-            f"Already run {cfg.RUN_N_TIMES} times for {output_folder}, no need to run more")
+    # if count > cfg.RUN_N_TIMES:
+    #     raise ValueError(
+    #         f"Already run {cfg.RUN_N_TIMES} times for {output_folder}, no need to run more")
 
     cfg.freeze()
     return cfg

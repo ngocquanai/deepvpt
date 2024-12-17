@@ -83,7 +83,7 @@ class Trainer():
 
         # forward
         with torch.set_grad_enabled(is_train):
-            outputs = self.model(inputs)  # (batchsize, num_cls)
+            outputs, hidden_cls = self.model(inputs)  # (batchsize, num_cls)
             if self.cfg.DBG:
                 logger.info(
                     "shape of model output: {}, targets: {}".format(
@@ -92,14 +92,14 @@ class Trainer():
             if self.cls_criterion.is_local() and is_train:
                 self.model.eval()
                 loss = self.cls_criterion(
-                    outputs, targets, self.cls_weights,
+                    outputs, targets, self.cls_weights, hidden_cls,
                     self.model, inputs
                 )
             elif self.cls_criterion.is_local():
                 return torch.tensor(1), outputs
             else:
                 loss = self.cls_criterion(
-                    outputs, targets, self.cls_weights)
+                    outputs, targets, self.cls_weights, hidden_cls)
 
             if loss == float('inf'):
                 logger.info(
@@ -177,6 +177,8 @@ class Trainer():
                     break
                 
                 X, targets = self.get_input(input_data)
+                X = X.to("cuda")
+                targets = targets.to("cuda")
                 # logger.info(X.shape)
                 # logger.info(targets.shape)
                 # measure data loading time
@@ -242,14 +244,22 @@ class Trainer():
             if curr_acc > best_metric:
                 best_metric = curr_acc
                 best_epoch = epoch + 1
+                logger.info("-"* 30)
                 logger.info(
-                    f'Best epoch {best_epoch}: best metric: {best_metric:.3f}')
+                    f'Best epoch {best_epoch}: best accuracy: {best_metric:.4f}')
+                logger.info("-"* 30)
                 patience = 0
             else:
                 patience += 1
             if patience >= self.cfg.SOLVER.PATIENCE:
                 logger.info("No improvement. Breaking out of loop.")
                 break
+
+            if epoch >= total_epoch - 3 :
+                logger.info("-"* 30)
+                logger.info(
+                    f'Best epoch {best_epoch}: best accuracy: {best_metric:.4f}')
+                logger.info("-"* 30)
 
         # save the last checkpoints
         # if self.cfg.MODEL.SAVE_CKPT:
@@ -290,6 +300,8 @@ class Trainer():
         for idx, input_data in enumerate(data_loader):
             end = time.time()
             X, targets = self.get_input(input_data)
+            X = X.to("cuda")
+            targets = targets.to("cuda")
             # measure data loading time
             data_time.update(time.time() - end)
 
@@ -315,7 +327,7 @@ class Trainer():
                 )
 
             # targets: List[int]
-            total_targets.extend(list(targets.numpy()))
+            total_targets.extend(list(targets.cpu().numpy()))
             total_logits.append(outputs)
         logger.info(
             f"Inference ({prefix}):"

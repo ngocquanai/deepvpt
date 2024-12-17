@@ -7,6 +7,9 @@ from typing import Optional
 from ..utils import logging
 logger = logging.get_logger("visual_prompt")
 
+# HICE
+from ..taxonomy.cifar100_config import CIFAR100, CIFAR100_TAXONOMY
+from ..taxonomy.taxonomy import get_layers_weight
 
 class SigmoidLoss(nn.Module):
     def __init__(self, cfg=None):
@@ -27,7 +30,7 @@ class SigmoidLoss(nn.Module):
         return target
 
     def loss(
-        self, logits, targets, per_cls_weights,
+        self, logits, targets, per_cls_weights, hidden_cls,
         multihot_targets: Optional[bool] = False
     ):
         # targets: 1d-tensor of integer
@@ -47,7 +50,7 @@ class SigmoidLoss(nn.Module):
         return torch.sum(loss) / targets.shape[0]
 
     def forward(
-        self, pred_logits, targets, per_cls_weights, multihot_targets=False
+        self, pred_logits, targets, per_cls_weights, hidden_cls, multihot_targets=False
     ):
         loss = self.loss(
             pred_logits, targets,  per_cls_weights, multihot_targets)
@@ -58,7 +61,7 @@ class SoftmaxLoss(SigmoidLoss):
     def __init__(self, cfg=None):
         super(SoftmaxLoss, self).__init__()
 
-    def loss(self, logits, targets, per_cls_weights, kwargs):
+    def loss(self, logits, targets, per_cls_weights, hidden_logits):
         weight = torch.tensor(
             per_cls_weights, device=logits.device
         )
@@ -74,10 +77,16 @@ LOSS = {
 
 def build_loss(cfg):
     loss_name = cfg.SOLVER.LOSS
+
+    loss_weight = cfg.SOLVER.LOSS_WEIGHT
+    hidden_W = get_layers_weight(CIFAR100, CIFAR100_TAXONOMY)
+
     assert loss_name in LOSS, \
         f'loss name {loss_name} is not supported'
     loss_fn = LOSS[loss_name]
     if not loss_fn:
         return None
+    elif loss_name == "hice":
+        return loss_fn(cfg, loss_weight= loss_weight, hidden_W = hidden_W)
     else:
         return loss_fn(cfg)

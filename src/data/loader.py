@@ -27,8 +27,9 @@ def _construct_loader(cfg, split, batch_size, shuffle, drop_last):
     # Construct the dataset
     if dataset_name.startswith("vtab-"):
         # import the tensorflow here only if needed
-        from .datasets.tf_dataset import TFDataset
-        dataset = TFDataset(cfg, split)
+        from .datasets.tf_dataset import NQDataset
+        # dataset = TFDataset(cfg, split)
+        dataset = NQDataset(cfg, split)
     else:
         assert (
             dataset_name in _DATASET_CATALOG.keys()

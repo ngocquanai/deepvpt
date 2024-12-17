@@ -164,6 +164,25 @@ class ViT(nn.Module):
             special_bias=True
         )
 
+        # self.head_layer0 = MLP(
+        #     input_dim=self.feat_dim,
+        #     mlp_dims=[self.feat_dim] * self.cfg.MODEL.MLP_NUM + \
+        #         [cfg.DATA.HIDDEN_CLASSES[0]], # noqa
+        #     special_bias=True
+        # )
+        # self.head_layer1 = MLP(
+        #     input_dim=self.feat_dim,
+        #     mlp_dims=[self.feat_dim] * self.cfg.MODEL.MLP_NUM + \
+        #         [cfg.DATA.HIDDEN_CLASSES[1]], # noqa
+        #     special_bias=True
+        # )
+        # self.head_layer2 = MLP(
+        #     input_dim=self.feat_dim,
+        #     mlp_dims=[self.feat_dim] * self.cfg.MODEL.MLP_NUM + \
+        #         [cfg.DATA.HIDDEN_CLASSES[2]], # noqa
+        #     special_bias=True
+        # )
+
     def forward(self, x, return_feature=False):
         if self.side is not None:
             side_output = self.side(x)
@@ -172,7 +191,7 @@ class ViT(nn.Module):
 
         if self.froze_enc and self.enc.training:
             self.enc.eval()
-        x = self.enc(x)  # batch_size x self.feat_dim
+        x, hidden_cls = self.enc(x)  # batch_size x self.feat_dim
 
         if self.side is not None:
             alpha_squashed = torch.sigmoid(self.side_alpha)
@@ -182,7 +201,12 @@ class ViT(nn.Module):
             return x, x
         x = self.head(x)
 
-        return x
+        hidden_logits = [None] * len(hidden_cls)
+        # hidden_logits[0] = self.head_layer0(hidden_cls[0])
+        # hidden_logits[1] = self.head_layer1(hidden_cls[1])
+        # hidden_logits[2] = self.head_layer2(hidden_cls[2])
+
+        return x, hidden_logits
     
     def forward_cls_layerwise(self, x):
         cls_embeds = self.enc.forward_cls_layerwise(x)
@@ -190,7 +214,7 @@ class ViT(nn.Module):
 
     def get_features(self, x):
         """get a (batch_size, self.feat_dim) feature"""
-        x = self.enc(x)  # batch_size x self.feat_dim
+        x, hidden_cls = self.enc(x)  # batch_size x self.feat_dim
         return x
 
 
